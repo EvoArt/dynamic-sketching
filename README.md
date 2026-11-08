@@ -1,5 +1,7 @@
 # Dynamic Sketching
 
+**Use it:** https://evoart.github.io/dynamic-sketching/ (on Android, open it in Chrome and choose **Add to home screen**; it then works offline).
+
 A drawing-practice tool for constructing 3D forms. Combine boxes, spheres, cylinders,
 cones, pyramids, wedges and tori. Light them, see them in or out of perspective, and
 reveal the lines you are practising:
