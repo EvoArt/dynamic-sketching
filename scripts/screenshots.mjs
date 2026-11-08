@@ -71,5 +71,30 @@ await shot('phone', { width: 412, height: 860 })
 await shot('phone-panel', { width: 412, height: 860 }, async (p) => {
   await p.getByRole('button', { name: 'Show or hide the controls' }).click()
 })
+const saveAndOpenLibrary = async (p) => {
+  await p.getByRole('button', { name: 'Save the scene and a picture of it to your library' }).click()
+  await p.waitForTimeout(600)
+  await click('Two crossing cylinders')(p)
+  await p.getByRole('button', { name: 'Save the scene and a picture of it to your library' }).click()
+  await p.waitForTimeout(600)
+  await p.getByRole('button', { name: 'Your library of saved scenes' }).click()
+  await p.waitForTimeout(400)
+}
+await shot('desktop-library', { width: 1400, height: 860 }, saveAndOpenLibrary)
+await shot('phone-library', { width: 412, height: 860 }, async (p) => {
+  await p.getByRole('button', { name: 'Show or hide the controls' }).click()
+  await saveAndOpenLibrary(p)
+})
+await shot('phone-library-item', { width: 412, height: 860 }, async (p) => {
+  await p.getByRole('button', { name: 'Show or hide the controls' }).click()
+  await saveAndOpenLibrary(p)
+  await p.locator('.lib-card').nth(1).click()
+})
+await shot('phone-library-reopened', { width: 412, height: 860 }, async (p) => {
+  await p.getByRole('button', { name: 'Show or hide the controls' }).click()
+  await saveAndOpenLibrary(p)
+  await p.locator('.lib-card').nth(1).click()
+  await click('Open scene')(p)
+})
 await browser.close()
 console.log(errors.length ? errors.join('\n') : 'no console errors')

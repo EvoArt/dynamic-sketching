@@ -663,17 +663,64 @@ export class Viewport {
     }
   }
 
-  /** The current picture, lines and overlay included, as a PNG data URL. */
-  snapshot(): string {
+  /**
+   * The current picture, lines and overlay included, without the gizmo or light marker.
+   * `maxSide` scales it down (for thumbnails).
+   */
+  capture(maxSide = Infinity): HTMLCanvasElement {
+    const helper = this.gizmo.getHelper()
+    const hidden = [helper, this.lightMarker, this.lightRay].filter((o) => o.visible)
+    for (const o of hidden) o.visible = false
     this.render()
+    const src = this.renderer.domElement
+    const k = Math.min(1, maxSide / Math.max(src.width, src.height))
     const out = document.createElement('canvas')
-    out.width = this.renderer.domElement.width
-    out.height = this.renderer.domElement.height
+    out.width = Math.round(src.width * k)
+    out.height = Math.round(src.height * k)
     const ctx = out.getContext('2d')!
-    ctx.drawImage(this.renderer.domElement, 0, 0)
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(src, 0, 0, out.width, out.height)
     ctx.drawImage(this.overlay, 0, 0, out.width, out.height)
-    return out.toDataURL('image/png')
+    for (const o of hidden) o.visible = true
+    this.invalidate()
+    return out
   }
+
+  /** Where the camera is looking from, independent of perspective or parallel projection. */
+  cameraState(): CameraState {
+    const t = this.controls.target
+    const dir = this.camera.position.clone().sub(t).normalize()
+    const distance = this.camera === this.ortho ? this.orthoDistance / this.ortho.zoom : this.persp.position.distanceTo(t)
+    return { target: [t.x, t.y, t.z], dir: [dir.x, dir.y, dir.z], distance }
+  }
+
+  setCameraState(c: CameraState) {
+    this.resize()
+    const t = this.controls.target.set(...c.target)
+    const dir = new Vector3(...c.dir).normalize()
+    const d = MathUtils.clamp(c.distance, this.controls.minDistance, this.controls.maxDistance)
+    if (this.camera === this.ortho) {
+      this.orthoDistance = d
+      this.ortho.zoom = 1
+      this.ortho.position.copy(t).addScaledVector(dir, Math.max(30, d))
+      this.updateOrthoFrustum()
+    } else this.persp.position.copy(t).addScaledVector(dir, d)
+    this.controls.update()
+    if (this.settings) this.applySettings(this.settings)
+  }
+}
+
+export interface CameraState {
+  target: [number, number, number]
+  /** Unit vector from the target towards the eye. */
+  dir: [number, number, number]
+  distance: number
+}
+
+export function isCameraState(c: unknown): c is CameraState {
+  const v = (a: unknown, n: number) => Array.isArray(a) && a.length === n && a.every((x) => Number.isFinite(x))
+  const o = c as CameraState | null
+  return !!o && v(o.target, 3) && v(o.dir, 3) && Number.isFinite(o.distance) && o.distance > 0 && Math.hypot(...o.dir) > 0.5
 }
 
 // ---------------------------------------------------------------- geometry

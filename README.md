@@ -28,6 +28,25 @@ edges, then intersections, full sections and the core shadow line in turn.
 The set pieces in the Practice panel are fixed scenes for particular problems, such as a
 cube corner pushed into a sphere or two crossing cylinders.
 
+## Your library
+
+**Save** (top of the screen) keeps the scene, the exact view and a picture of it in your
+library on the device. Open the library (the grid button) to look at the pictures full
+size, draw from them, share or download them, rename or delete them, or **Open scene** to
+carry on playing with it. A practice scene saved with its answers hidden can still have them
+revealed after you open it.
+
+**Back up library** saves everything to one file (on a phone it opens the share sheet, so
+you can put it in Drive or send it to yourself). **Restore a backup** adds it back, on this
+or another device.
+
+## Offline
+
+Once the page has loaded, the whole app is stored on the device and works with no
+connection. The scene, the view and the practice round you are in are kept between
+visits, so nothing is lost if the page or phone restarts. When a new version is published
+you are asked before it loads, so it never reloads while you are drawing.
+
 ## Controls
 
 | | Mouse | Touch |
@@ -39,8 +58,8 @@ cube corner pushed into a sphere or two crossing cylinders.
 | Move / turn / size | drag the gizmo handles; choose the mode at top left (`W` `E` `S`) | same |
 
 Undo and redo are `Ctrl+Z` / `Ctrl+Y` or the arrows at top left. `Delete` removes the
-selected shape, `Esc` deselects. Your scene is kept on the device between visits.
-**Save picture** downloads the current view as a PNG to draw from.
+selected shape, `Esc` deselects. Your scene and view are kept on the device between visits.
+**Download picture** (under Save and share) saves the current view as a PNG without adding it to the library.
 
 ## Running it
 
@@ -48,6 +67,8 @@ selected shape, `Esc` deselects. Your scene is kept on the device between visits
 npm install
 npm run dev        # http://localhost:5173, also on your network for a phone on the same Wi-Fi
 npm test           # geometry tests
+npm run shots      # screenshots of key states (with npm run dev on port 5199)
+npm run offline    # checks the built app reloads offline (with vite preview on port 5198)
 npm run build      # static site in dist/, installable as an app (PWA), works offline
 ```
 

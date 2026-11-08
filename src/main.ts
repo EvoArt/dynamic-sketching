@@ -15,10 +15,18 @@ import {
   sanitiseDoc,
 } from './core/scene'
 import { SHAPE_KINDS, SHAPE_LABELS, type ShapeKind, type ShapeSpec, type Solid, normaliseSize, sizeFields, solidOf, tubeOf } from './core/shapes'
-import { type GizmoMode, LAYER_STYLES, Viewport } from './render/viewport'
+import { type SavedItem, keepStorage, putItem } from './library'
+import { type CameraState, type GizmoMode, LAYER_STYLES, Viewport, isCameraState } from './render/viewport'
 import { button, h, section, segmented, slider, toggle } from './ui/controls'
+import { downloadBlob, openLibrary } from './ui/library-view'
 
-registerSW({ immediate: true })
+// Offline: the service worker caches the whole app. New versions wait until the user says so,
+// so an update never reloads the page in the middle of a drawing.
+const updateSW = registerSW({
+  immediate: true,
+  onOfflineReady: () => flash('Ready to use offline'),
+  onNeedRefresh: () => showUpdate(),
+})
 
 // ---------------------------------------------------------------- state
 
@@ -35,6 +43,8 @@ interface Store {
   doc: Doc
   practice: PracticeState['options']
   open: string[]
+  camera?: CameraState
+  practiceStep?: number
 }
 
 function load(): Partial<Store> {
@@ -54,7 +64,7 @@ let selected: string | null = null
 let gizmoMode: GizmoMode = 'translate'
 const practice: PracticeState = {
   options: { count: 2, kinds: ['box', 'sphere', 'cylinder', 'cone'], tilt: true, randomView: true, ...saved.practice },
-  step: -1,
+  step: Number.isInteger(saved.practiceStep) ? saved.practiceStep! : -1,
   seed: 0,
 }
 const openSections = new Set(saved.open ?? ['practice', 'lines'])
@@ -73,7 +83,8 @@ function save() {
   clearTimeout(saveTimer)
   saveTimer = window.setTimeout(() => {
     try {
-      localStorage.setItem(STORE, JSON.stringify({ doc, practice: practice.options, open: [...openSections] } satisfies Store))
+      const store: Store = { doc, practice: practice.options, open: [...openSections], camera: view.cameraState(), practiceStep: practice.step }
+      localStorage.setItem(STORE, JSON.stringify(store))
     } catch {
       /* storage may be unavailable; the app works without it */
     }
@@ -129,6 +140,7 @@ const view = new Viewport(stage, {
   },
   camera() {
     request({ view: true }, true)
+    save()
   },
 })
 
@@ -370,18 +382,87 @@ function hideAll() {
   renderPanel()
 }
 
-function download(name: string, url: string) {
-  const a = h('a', { href: url, download: name })
-  document.body.append(a)
-  a.click()
-  a.remove()
+function exportScene() {
+  downloadBlob(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }), 'sketch-scene.json')
 }
 
-function exportScene() {
-  const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  download('sketch-scene.json', url)
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+const toBlob = (c: HTMLCanvasElement, type: string, quality?: number) =>
+  new Promise<Blob>((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('no picture'))), type, quality))
+
+function savePicture() {
+  toBlob(view.capture(), 'image/png').then((b) => downloadBlob(b, 'sketch-reference.png'))
+}
+
+
+/** Keeps the scene, the view and a picture of it in the library on this device. */
+async function saveToLibrary() {
+  try {
+    const kinds = [...new Set(doc.shapes.filter((s) => s.visible).map((s) => SHAPE_LABELS[s.kind].toLowerCase()))]
+    const what = kinds.length ? kinds.join(', ').replace(/^./, (c) => c.toUpperCase()) : 'Empty scene'
+    const item: SavedItem = {
+      id: newId(),
+      name: `${practice.step >= 0 ? 'Practice: ' : ''}${what}`,
+      created: Date.now(),
+      doc: structuredClone(doc),
+      camera: view.cameraState(),
+      practiceStep: practice.step,
+      picture: await toBlob(view.capture(), 'image/png'),
+      thumb: await toBlob(view.capture(360), 'image/jpeg', 0.85),
+    }
+    await putItem(item)
+    keepStorage()
+    flash('Saved to your library')
+  } catch {
+    flash('Could not save here (is this a private window?)')
+  }
+}
+
+function openSaved(item: SavedItem) {
+  commit(() => (doc = sanitiseDoc(structuredClone(item.doc)) ?? doc))
+  practice.step = item.practiceStep
+  select(null)
+  settingsChanged()
+  view.setCameraState(item.camera)
+  renderPanel()
+  flash(`Opened “${item.name}”`)
+}
+
+const showLibrary = () => openLibrary({ open: openSaved, flash })
+
+// Installing as an app (Chrome on Android and desktop offer this).
+interface InstallPrompt extends Event {
+  prompt(): Promise<void>
+  userChoice: Promise<{ outcome: string }>
+}
+let installPrompt: InstallPrompt | null = null
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  installPrompt = e as InstallPrompt
+  renderPanel()
+})
+window.addEventListener('appinstalled', () => {
+  installPrompt = null
+  renderPanel()
+  flash('Installed. Open it from your home screen.')
+})
+async function install() {
+  if (!installPrompt) return
+  await installPrompt.prompt()
+  await installPrompt.userChoice
+  installPrompt = null
+  renderPanel()
+}
+const standalone = () => matchMedia('(display-mode: standalone)').matches
+
+function showUpdate() {
+  const bar = h(
+    'div',
+    { class: 'update', role: 'status' },
+    h('span', {}, 'A new version is ready.'),
+    button('Update', () => updateSW(true), 'primary'),
+    button('Later', () => bar.remove(), 'plain'),
+  )
+  app.append(bar)
 }
 
 function importScene() {
@@ -421,6 +502,8 @@ const ICONS = {
   redo: '<svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>',
   panel: '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
   dice: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.2"/><circle cx="16" cy="16" r="1.2"/><circle cx="16" cy="8" r="1.2"/><circle cx="8" cy="16" r="1.2"/><circle cx="12" cy="12" r="1.2"/></svg>',
+  camera: '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  library: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>',
   eye: '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
 }
 
@@ -464,7 +547,13 @@ function updateTopbar() {
   )
   const toggleBtn = iconButton('panel', 'Show or hide the controls', () => app.classList.toggle('panel-closed'), { text: 'Controls' })
   toggleBtn.classList.add('panel-toggle')
-  topbar.replaceChildren(gizmo, history, practiceBar, toggleBtn)
+  const keep = h(
+    'div',
+    { class: 'group' },
+    iconButton('camera', 'Save the scene and a picture of it to your library', saveToLibrary, { text: 'Save' }),
+    iconButton('library', 'Your library of saved scenes', showLibrary),
+  )
+  topbar.replaceChildren(gizmo, history, practiceBar, keep, toggleBtn)
 }
 
 function setGizmo(m: GizmoMode) {
@@ -744,11 +833,23 @@ function renderPanel() {
     h(
       'div',
       { class: 'buttons' },
-      button('Save picture', () => download('sketch-reference.png', view.snapshot())),
+      button('Save to library', saveToLibrary, 'primary'),
+      button('Open library', showLibrary),
+    ),
+    h('p', { class: 'note' }, 'The library keeps each scene with its view and a picture, on this device. Open one to carry on with it or reveal its answers.'),
+    h(
+      'div',
+      { class: 'buttons' },
+      button('Download picture', savePicture),
       button('Export scene', exportScene),
       button('Import scene', importScene),
     ),
-    h('p', { class: 'note' }, 'Your scene is kept on this device between visits.'),
+    installPrompt && !standalone()
+      ? h('div', { class: 'buttons' }, button('Install as an app', install, 'primary'))
+      : null,
+    h('p', { class: 'note' }, standalone()
+      ? 'Installed. Everything works without a connection.'
+      : 'Works without a connection once loaded. Install it (or Add to home screen) to open it like an app.'),
   )
 
   const legend = h(
@@ -798,5 +899,7 @@ window.addEventListener('keydown', (e) => {
 if (matchMedia('(max-width: 720px)').matches) app.classList.add('panel-closed')
 view.applySettings(doc.settings)
 shapesChanged()
-view.frame(doc.shapes)
+// Carry on from exactly where the last visit left off.
+if (isCameraState(saved.camera)) view.setCameraState(saved.camera)
+else view.frame(doc.shapes)
 renderPanel()

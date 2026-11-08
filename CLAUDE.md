@@ -10,7 +10,9 @@ an adult artist practising construction drawing on desktop and on an Android pho
 - PWA via vite-plugin-pwa, deployed to GitHub Pages by [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
 - Vitest for `src/core`. `npm run shots` (with `npm run dev` on port 5199, or pass a URL)
   saves Playwright screenshots of key states to `shots/` at desktop and phone sizes. Look at
-  them after visual changes.
+  them after visual changes. `npm run offline` checks the built app (via `vite preview --port 5198`)
+  reloads offline with its view and library intact.
+- The service worker uses prompt mode: updates wait for the user, never auto-reload mid-drawing.
 
 ## Architecture
 
@@ -21,7 +23,9 @@ src/core/     geometry and document model. Pure TypeScript: may import three's m
   analysis.ts   intersections, full sections, section fills, silhouettes, terminators
   scene.ts      Doc/Settings, presets, random practice scenes
 src/render/   viewport.ts (three passes: solids, depth-only, lines visible/hidden), overlay.ts (2D horizon/VPs)
-src/main.ts   app state, undo, persistence, recompute scheduling, panel
+src/library.ts           saved scenes + pictures in IndexedDB, backup files
+src/ui/library-view.ts   the library screen (back button closes it)
+src/main.ts   app state, undo, persistence (doc, camera, practice step), recompute scheduling, panel
 ```
 
 - Every shape is a unit primitive scaled by its world matrix. Only zero sets are used, so
