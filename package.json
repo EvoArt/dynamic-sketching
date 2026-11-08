@@ -1,7 +1,7 @@
 {
   "name": "dynamic-sketching",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -11,12 +11,19 @@
     "test": "vitest run",
     "icons": "node scripts/make-icons.mjs",
     "shots": "node scripts/screenshots.mjs",
-    "offline": "node scripts/offline-check.mjs"
+    "offline": "node scripts/offline-check.mjs",
+    "android:icons": "node scripts/make-android-icons.mjs",
+    "android:sync": "npm run build && cap sync android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
     "three": "^0.187.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
     "@playwright/test": "^1.63.0",
     "@types/three": "^0.187.0",
     "typescript": "^7.0.2",

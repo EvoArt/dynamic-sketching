@@ -1,5 +1,6 @@
 // The library screen: saved scenes as pictures, opened full size, shared, renamed or deleted.
 import { type SavedItem, backupBlob, deleteItem, listItems, putItem, readBackup } from '../library'
+import { downloadBlob, shareBlob } from '../platform'
 import { button, h } from './controls'
 
 export interface LibraryHost {
@@ -15,33 +16,12 @@ export function fileName(name: string, ext: string) {
   return `${slug}.${ext}`
 }
 
-export function downloadBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob)
-  const a = h('a', { href: url, download: name })
-  document.body.append(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 4000)
-}
-
-/** Opens the share sheet with the file where the browser can (Android), otherwise downloads it. */
-export async function shareOrDownload(blob: Blob, name: string, title: string) {
-  const file = new File([blob], name, { type: blob.type })
-  if (navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title })
-      return
-    } catch (e) {
-      if ((e as Error).name === 'AbortError') return
-    }
-  }
-  downloadBlob(blob, name)
-}
-
 let current: { close(): void } | null = null
 
 export function openLibrary(host: LibraryHost, focus?: string) {
   current?.close()
+  const done = (p: Promise<string | null>) =>
+    p.then((msg) => msg && host.flash(msg)).catch(() => host.flash('Could not save the file'))
   const urls: string[] = []
   const url = (b: Blob) => {
     const u = URL.createObjectURL(b)
@@ -166,8 +146,8 @@ export function openLibrary(host: LibraryHost, focus?: string) {
             host.open(it)
             close()
           }, 'primary'),
-          button('Share picture', () => shareOrDownload(it.picture, fileName(it.name, 'png'), it.name)),
-          button('Download', () => downloadBlob(it.picture, fileName(it.name, 'png'))),
+          button('Share picture', () => done(shareBlob(it.picture, fileName(it.name, 'png'), it.name))),
+          button('Download', () => done(downloadBlob(it.picture, fileName(it.name, 'png')))),
           del,
         ),
       ),
@@ -178,7 +158,7 @@ export function openLibrary(host: LibraryHost, focus?: string) {
     if (!items.length) return host.flash('Nothing to back up yet')
     const blob = await backupBlob(items)
     const stamp = new Date().toISOString().slice(0, 10)
-    await shareOrDownload(blob, `sketch-library-${stamp}.json`, 'Dynamic Sketching library')
+    await done(shareBlob(blob, `sketch-library-${stamp}.json`, 'Dynamic Sketching library'))
   }
 
   function restore() {

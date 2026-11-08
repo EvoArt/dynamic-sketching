@@ -8,6 +8,11 @@ an adult artist practising construction drawing on desktop and on an Android pho
 
 - TypeScript, Vite, three.js. No UI framework: [src/ui/controls.ts](src/ui/controls.ts) has small DOM helpers.
 - PWA via vite-plugin-pwa, deployed to GitHub Pages by [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
+- Android APK: Capacitor 8 wraps `dist/` ([capacitor.config.ts](capacitor.config.ts), [android/](android/)); built and signed by
+  [.github/workflows/android.yml](.github/workflows/android.yml). Needs JDK 21. Code that differs between web and the
+  app (file saving, sharing, no service worker) lives in [src/platform.ts](src/platform.ts): the Android WebView has no
+  `<a download>` or Web Share, so anything that saves or shares a file must go through it.
+- Version name comes from package.json; bump it for a release.
 - Vitest for `src/core`. `npm run shots` (with `npm run dev` on port 5199, or pass a URL)
   saves Playwright screenshots of key states to `shots/` at desktop and phone sizes. Look at
   them after visual changes. `npm run offline` checks the built app (via `vite preview --port 5198`)

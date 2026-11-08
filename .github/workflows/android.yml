@@ -1,0 +1,94 @@
+# Builds the Android app (the site packaged with Capacitor, so it works offline from the
+# first launch) and puts the APK where a phone can download it:
+#   - every push to main replaces the `latest` pre-release with a fresh APK;
+#   - publishing a release (vX.Y.Z) attaches the APK to that release.
+# Every build is signed with the same key (repository secrets), so a new APK installs over
+# the old one and keeps the library.
+
+name: Android
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the commit count is the version code
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx cap sync android
+
+      - name: Build signed APK
+        id: apk
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::notice::No signing secrets yet, so no APK was built (see README, Android app)."
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          export ANDROID_KEYSTORE="$RUNNER_TEMP/release.jks"
+          export VERSION_CODE="$(git rev-list --count HEAD)"
+          cd android
+          ./gradlew assembleRelease --no-daemon
+          VERSION="$(node -p "require('../package.json').version")"
+          mkdir -p ../apk
+          cp app/build/outputs/apk/release/app-release.apk "../apk/dynamic-sketching-${VERSION}-${GITHUB_SHA::7}.apk"
+          rm "$RUNNER_TEMP/release.jks"
+          echo "built=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.apk.outputs.built == 'true'
+        with:
+          name: apk-${{ github.sha }}
+          path: apk/*.apk
+          retention-days: 30
+
+      - name: Attach to the release
+        if: steps.apk.outputs.built == 'true' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp apk/*.apk apk/dynamic-sketching.apk
+          gh release upload "${{ github.event.release.tag_name }}" apk/dynamic-sketching.apk --clobber
+
+      - name: Publish the latest build
+        if: steps.apk.outputs.built == 'true' && github.event_name != 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cp apk/*.apk apk/dynamic-sketching.apk
+          NOTES="$(printf 'Automatic build of `%s`.\n\n%s\n\nInstall: download dynamic-sketching.apk on the phone, open it, and allow installing from your browser when Android asks. It installs over earlier versions and keeps your library.\n' "${GITHUB_SHA::7}" "$(git log -1 --pretty=%B)")"
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest apk/dynamic-sketching.apk --title "Latest build (${GITHUB_SHA::7})" --notes "$NOTES" --prerelease --target "$GITHUB_SHA"

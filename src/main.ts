@@ -18,15 +18,19 @@ import { SHAPE_KINDS, SHAPE_LABELS, type ShapeKind, type ShapeSpec, type Solid, 
 import { type SavedItem, keepStorage, putItem } from './library'
 import { type CameraState, type GizmoMode, LAYER_STYLES, Viewport, isCameraState } from './render/viewport'
 import { button, h, section, segmented, slider, toggle } from './ui/controls'
-import { downloadBlob, openLibrary } from './ui/library-view'
+import { downloadBlob, isNative } from './platform'
+import { openLibrary } from './ui/library-view'
 
-// Offline: the service worker caches the whole app. New versions wait until the user says so,
-// so an update never reloads the page in the middle of a drawing.
-const updateSW = registerSW({
-  immediate: true,
-  onOfflineReady: () => flash('Ready to use offline'),
-  onNeedRefresh: () => showUpdate(),
-})
+// Offline: on the website the service worker caches the whole app. New versions wait until the
+// user says so, so an update never reloads the page in the middle of a drawing. The Android
+// app has everything inside it already.
+const updateSW = isNative
+  ? () => Promise.resolve()
+  : registerSW({
+      immediate: true,
+      onOfflineReady: () => flash('Ready to use offline'),
+      onNeedRefresh: () => showUpdate(),
+    })
 
 // ---------------------------------------------------------------- state
 
@@ -382,15 +386,19 @@ function hideAll() {
   renderPanel()
 }
 
+function reportSave(p: Promise<string | null>) {
+  p.then((msg) => msg && flash(msg)).catch(() => flash('Could not save the file'))
+}
+
 function exportScene() {
-  downloadBlob(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }), 'sketch-scene.json')
+  reportSave(downloadBlob(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }), 'sketch-scene.json'))
 }
 
 const toBlob = (c: HTMLCanvasElement, type: string, quality?: number) =>
   new Promise<Blob>((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('no picture'))), type, quality))
 
 function savePicture() {
-  toBlob(view.capture(), 'image/png').then((b) => downloadBlob(b, 'sketch-reference.png'))
+  reportSave(toBlob(view.capture(), 'image/png').then((b) => downloadBlob(b, 'sketch-reference.png')))
 }
 
 
@@ -452,7 +460,7 @@ async function install() {
   installPrompt = null
   renderPanel()
 }
-const standalone = () => matchMedia('(display-mode: standalone)').matches
+const standalone = () => isNative || matchMedia('(display-mode: standalone)').matches
 
 function showUpdate() {
   const bar = h(
@@ -848,7 +856,7 @@ function renderPanel() {
       ? h('div', { class: 'buttons' }, button('Install as an app', install, 'primary'))
       : null,
     h('p', { class: 'note' }, standalone()
-      ? 'Installed. Everything works without a connection.'
+      ? 'This is the installed app. Everything works without a connection.'
       : 'Works without a connection once loaded. Install it (or Add to home screen) to open it like an app.'),
   )
 

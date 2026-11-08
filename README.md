@@ -1,6 +1,7 @@
 # Dynamic Sketching
 
-**Use it:** https://evoart.github.io/dynamic-sketching/ (on Android, open it in Chrome and choose **Add to home screen**; it then works offline).
+**Android app:** download `dynamic-sketching.apk` from the [latest release](https://github.com/EvoArt/dynamic-sketching/releases/latest) on your phone and open it. It works offline from the first launch.
+**In a browser:** https://evoart.github.io/dynamic-sketching/ (works offline once loaded; **Add to home screen** to keep it).
 
 A drawing-practice tool for constructing 3D forms. Combine boxes, spheres, cylinders,
 cones, pyramids, wedges and tori. Light them, see them in or out of perspective, and
@@ -76,6 +77,24 @@ To put it online, push to a GitHub repository with Pages enabled (Settings → P
 Source: GitHub Actions). [.github/workflows/deploy.yml](.github/workflows/deploy.yml) builds
 and publishes every push to `main`. On Android, open the page in Chrome and choose
 **Add to home screen** to install it like an app.
+
+## Android app
+
+The APK is the same site packaged with [Capacitor](https://capacitorjs.com), so everything is
+inside it and nothing needs a connection. Inside the app, **Download** saves to
+*Documents › Dynamic Sketching* and **Share** opens Android's share sheet.
+
+```sh
+npm run android:sync       # build the site and copy it into android/
+cd android && ./gradlew assembleRelease   # needs JDK 21 and the Android SDK
+```
+
+[.github/workflows/android.yml](.github/workflows/android.yml) builds a signed APK on every push
+(the `latest` pre-release) and attaches one to each published release. It signs with one fixed key
+so new versions install over old ones and keep the library. The key is kept outside the
+repository; CI reads it from the secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`
+and `ANDROID_KEY_ALIAS`, and skips the APK when they aren't set. Launcher icons come from
+`public/icon.svg` via `npm run android:icons`.
 
 ## How the lines are found
 
